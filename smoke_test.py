@@ -242,7 +242,109 @@ log(
 
 
 # ---------------------------------------------------------
-# 4. JQL SEARCH TEST
+# 4. PROJECT PERMISSION VALIDATION
+# ---------------------------------------------------------
+
+log(
+    "INFO",
+    f"Checking Browse Projects permission for {project_key}"
+)
+
+permissions_url = f"{JIRA_URL}/rest/api/3/mypermissions"
+
+permission_params = {
+    "projectKey": project_key,
+    "permissions": "BROWSE_PROJECTS",
+}
+
+
+try:
+    response = requests.get(
+        permissions_url,
+        auth=auth,
+        headers=headers,
+        params=permission_params,
+        timeout=15,
+    )
+
+except requests.exceptions.Timeout:
+    fail(
+        "PERMISSION_CHECK_TIMEOUT",
+        "Jira permission check did not respond within 15 seconds.",
+        "Check Jira availability and network connectivity."
+    )
+
+except requests.exceptions.RequestException as error:
+    fail(
+        "PERMISSION_CHECK_FAILED",
+        str(error),
+        "Check Jira connectivity."
+    )
+
+
+if response.status_code == 401:
+    fail(
+        "JIRA_AUTH_FAILED",
+        "Authentication failed while checking Jira permissions.",
+        "Verify JIRA_EMAIL and JIRA_API_TOKEN."
+    )
+
+
+if response.status_code == 404:
+    fail(
+        "PERMISSION_CONTEXT_NOT_FOUND",
+        f"Permission context could not be resolved for project {project_key}.",
+        "Verify the project key and project visibility."
+    )
+
+
+if response.status_code != 200:
+    fail(
+        "PERMISSION_CHECK_ERROR",
+        f"Jira returned HTTP {response.status_code}.",
+        response.text[:300]
+    )
+
+
+try:
+    permission_data = response.json()
+
+except ValueError:
+    fail(
+        "PERMISSION_INVALID_RESPONSE",
+        "Jira returned permission data that could not be parsed as JSON."
+    )
+
+
+browse_permission = (
+    permission_data
+    .get("permissions", {})
+    .get("BROWSE_PROJECTS", {})
+)
+
+has_browse_permission = browse_permission.get(
+    "havePermission",
+    False
+)
+
+
+if not has_browse_permission:
+    fail(
+        "BROWSE_PROJECTS_DENIED",
+        f"The authenticated account does not have Browse Projects "
+        f"permission for {project_key}.",
+        "Grant Browse Projects permission through the Jira project "
+        "permission scheme or an appropriate project role/group."
+    )
+
+
+log(
+    "PASS",
+    f"Browse Projects permission confirmed for {project_key}"
+)
+
+# ---------------------------------------------------------
+# 5. JQL SEARCH TEST
 # ---------------------------------------------------------
 
 log(
@@ -348,7 +450,7 @@ log(
 
 
 # ---------------------------------------------------------
-# 5. SAMPLE ISSUE OUTPUT
+# 6. SAMPLE ISSUE OUTPUT
 # ---------------------------------------------------------
 
 print()
@@ -391,7 +493,7 @@ else:
 
 
 # ---------------------------------------------------------
-# 6. FINAL SMOKE TEST RESULT
+# 7. FINAL SMOKE TEST RESULT
 # ---------------------------------------------------------
 
 print()
@@ -402,9 +504,9 @@ print("Configuration       PASS")
 print("Jira connectivity   PASS")
 print("Authentication      PASS")
 print("Project validation  PASS")
+print("Browse Projects     PASS")
 print("JQL search          PASS")
 print("=" * 55)
-
 
 log(
     "PASS",
