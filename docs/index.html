@@ -1632,84 +1632,196 @@
     updateCustomRangeText
   );
 
-
-
   /* =====================================================
      GENERATE REPORT
-
-     CURRENT STAGE:
-     Opens authenticated GitHub Actions page.
-
-     Next stage:
-     Selected period will be passed securely
-     into the workflow.
      ===================================================== */
 
   document
-    .getElementById(
-      "generate-report"
-    )
+    .getElementById("generate-report")
     .addEventListener(
       "click",
-      () => {
+      async () => {
+
+        const button =
+          document.getElementById(
+            "generate-report"
+          );
+
+        const periodMap = {
+          "Previous week":
+            "previous-week",
+
+          "Previous 2 weeks":
+            "previous-2-weeks",
+
+          "Previous 30 days":
+            "previous-30-days",
+
+          "Custom":
+            "custom"
+        };
+
+
+        const payload = {
+          report_period:
+            periodMap[reportPeriod],
+
+          start_date: "",
+          end_date: ""
+        };
 
 
         if (
-          reportPeriod ===
-          "Custom"
+          reportPeriod === "Custom"
         ) {
-
 
           const start =
             startDateInput.value;
-
 
           const end =
             endDateInput.value;
 
 
-          if (
-            !start ||
-            !end
-          ) {
+          if (!start || !end) {
 
             alert(
-              "Please provide both a start and end date."
+              "Please select both dates."
             );
 
             return;
-
           }
 
 
           if (
-            new Date(end) <=
+            new Date(end) <
             new Date(start)
           ) {
 
             alert(
-              "End date must be later than start date."
+              "End date cannot be before start date."
             );
 
             return;
-
           }
 
 
-          selectedPeriod.textContent =
-            `${start} to ${end}`;
+          payload.start_date =
+            start;
 
+          payload.end_date =
+            end;
         }
 
 
-        window.open(
-          workflowUrl,
-          "_blank"
-        );
+        /*
+         * GitHub Pages is the public demonstration UI.
+         * Report execution is available only from
+         * the internally hosted console.
+         */
+
+        if (
+          window.location.hostname
+            .endsWith("github.io")
+        ) {
+
+          alert(
+            "Report generation is available from the internal reporting console."
+          );
+
+          return;
+        }
+
+
+        button.disabled = true;
+
+        button.textContent =
+          "Starting Report...";
+
+
+        try {
+
+          const response =
+            await fetch(
+              "/generate",
+              {
+                method: "POST",
+
+                headers: {
+                  "Content-Type":
+                    "application/json"
+                },
+
+                body:
+                  JSON.stringify(
+                    payload
+                  )
+              }
+            );
+
+
+          const result =
+            await response.json();
+
+
+          if (!response.ok) {
+
+            throw new Error(
+              result.error ||
+              "Report could not be started."
+            );
+          }
+
+
+          alert(
+            "Report requested successfully.\n\nThe Jira report will be delivered by email."
+          );
+
+
+          button.textContent =
+            "Report Started";
+
+
+          setTimeout(
+            loadLatestRun,
+            3000
+          );
+
+        }
+
+        catch (error) {
+
+          alert(
+            "Report request failed:\n\n" +
+            error.message
+          );
+
+
+          button.textContent =
+            "Generate Report";
+
+        }
+
+        finally {
+
+          setTimeout(
+            () => {
+
+              button.disabled =
+                false;
+
+              button.textContent =
+                "Generate Report";
+
+            },
+            2500
+          );
+
+        }
 
       }
     );
 
+  
 </script>
 
 
