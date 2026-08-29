@@ -1,7 +1,9 @@
 import argparse
 import os
+import smtplib
 import sys
 from datetime import date, datetime, timedelta
+from email.message import EmailMessage
 
 import requests
 from dotenv import load_dotenv
@@ -13,6 +15,12 @@ URL = os.getenv("JIRA_URL", "").rstrip("/")
 EMAIL = os.getenv("JIRA_EMAIL")
 TOKEN = os.getenv("JIRA_API_TOKEN")
 PROJECT = os.getenv("JIRA_PROJECT_KEY")
+
+SMTP_HOST = os.getenv("SMTP_HOST")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+RECIPIENT = os.getenv("REPORT_RECIPIENT")
 
 
 def die(code, message):
@@ -31,7 +39,7 @@ session.headers["Accept"] = "application/json"
 
 def jira_get(path, **params):
     try:
-        r = session.get(
+        response = session.get(
             f"{URL}/rest/api/3{path}",
             params=params,
             timeout=15,
@@ -39,27 +47,27 @@ def jira_get(path, **params):
     except requests.RequestException as error:
         die("JIRA_CONNECTION_FAILED", str(error))
 
-    if r.status_code == 401:
+    if response.status_code == 401:
         die("JIRA_AUTH_FAILED", "Check Jira email/API token.")
 
-    if not r.ok:
+    if not response.ok:
         die(
-            f"JIRA_HTTP_{r.status_code}",
-            r.text[:200] or "Request failed."
+            f"JIRA_HTTP_{response.status_code}",
+            response.text[:200] or "Request failed."
         )
 
-    return r.json()
+    return response.json()
 
 
-def search(jql, all_pages=True):
+def search(jql, sample=False):
     issues = []
     token = None
 
     while True:
         params = {
             "jql": jql,
-            "maxResults": 100 if all_pages else 1,
-            "fields": "summary",
+            "maxResults": 1 if sample else 100,
+            "fields": "summary,status,priority",
         }
 
         if token:
@@ -69,20 +77,13 @@ def search(jql, all_pages=True):
         issues.extend(data.get("issues", []))
         token = data.get("nextPageToken")
 
-        if not all_pages or not token:
+        if sample or not token:
             return issues
 
 
 def smoke_test():
     user = jira_get("/myself")
-
-    try:
-        project = jira_get(f"/project/{PROJECT}")
-    except SystemExit:
-        die(
-            "PROJECT_NOT_FOUND",
-            f"{PROJECT} does not exist or is not accessible."
-        )
+    project = jira_get(f"/project/{PROJECT}")
 
     permissions = jira_get(
         "/mypermissions",
@@ -91,8 +92,7 @@ def smoke_test():
     )
 
     allowed = (
-        permissions
-        .get("permissions", {})
+        permissions.get("permissions", {})
         .get("BROWSE_PROJECTS", {})
         .get("havePermission", False)
     )
@@ -105,7 +105,7 @@ def smoke_test():
 
     search(
         f'project = "{PROJECT}" ORDER BY created DESC',
-        all_pages=False,
+        sample=True,
     )
 
     print("JIRA SMOKE TEST")
@@ -129,42 +129,37 @@ def reporting_period(start=None, end=None):
                 "INVALID_DATE_RANGE",
                 "Use --start and --end with end later than start."
             )
-
         return start, end
 
     today = date.today()
-    this_monday = today - timedelta(days=today.weekday())
+    monday = today - timedelta(days=today.weekday())
 
-    return (
-        this_monday - timedelta(days=7),
-        this_monday,
-    )
+    return monday - timedelta(days=7), monday
 
 
-def report(start, end):
+def get_report(start, end):
     base = f'project = "{PROJECT}"'
 
-    queries = {
-        "Created": (
-            f'{base} AND created >= "{start}" '
-            f'AND created < "{end}"'
-        ),
-        "Resolved": (
-            f'{base} AND resolutiondate >= "{start}" '
-            f'AND resolutiondate < "{end}"'
-        ),
-        "Still open": (
-            f'{base} AND created >= "{start}" '
-            f'AND created < "{end}" '
-            f'AND resolution IS EMPTY'
-        ),
-    }
+    created = search(
+        f'{base} AND created >= "{start}" '
+        f'AND created < "{end}"'
+    )
 
-    counts = {
-        name: len(search(jql))
-        for name, jql in queries.items()
-    }
+    resolved = search(
+        f'{base} AND resolutiondate >= "{start}" '
+        f'AND resolutiondate < "{end}"'
+    )
 
+    open_issues = search(
+        f'{base} AND created >= "{start}" '
+        f'AND created < "{end}" '
+        f'AND resolution IS EMPTY'
+    )
+
+    return created, resolved, open_issues
+
+
+def print_report(start, end, created, resolved, open_issues):
     sunday = end - timedelta(days=1)
 
     print()
@@ -177,29 +172,104 @@ def report(start, end):
         f"{start} 00:00 to {sunday} 23:59"
     )
     print("-" * 55)
-    print(f"Created:          {counts['Created']}")
-    print(f"Resolved:         {counts['Resolved']}")
-    print(f"Still open:       {counts['Still open']}")
+    print(f"Created:          {len(created)}")
+    print(f"Resolved:         {len(resolved)}")
+    print(f"Still open:       {len(open_issues)}")
     print("=" * 55)
+
+
+def send_email(start, end, created, resolved, open_issues):
+    if not all([
+        SMTP_HOST,
+        SMTP_USER,
+        SMTP_PASSWORD,
+        RECIPIENT
+    ]):
+        die("EMAIL_CONFIG_MISSING", "Check SMTP values in .env")
+
+    sunday = end - timedelta(days=1)
+
+    rows = ""
+
+    for issue in open_issues:
+        key = issue.get("key")
+        fields = issue.get("fields", {})
+        summary = fields.get("summary", "")
+        status = (fields.get("status") or {}).get("name", "")
+        priority = (fields.get("priority") or {}).get("name", "Not set")
+
+        rows += f"""
+        <tr>
+            <td><a href="{URL}/browse/{key}">{key}</a></td>
+            <td>{summary}</td>
+            <td>{priority}</td>
+            <td>{status}</td>
+        </tr>
+        """
+
+    if not rows:
+        rows = '<tr><td colspan="4">No open issues from this period.</td></tr>'
+
+    html = f"""
+    <h2>Jira Monday Brief</h2>
+
+    <p>
+        <strong>Project:</strong> {PROJECT}<br>
+        <strong>Reporting period:</strong>
+        {start} 00:00 to {sunday} 23:59
+    </p>
+
+    <h3>
+        Created: {len(created)} |
+        Resolved: {len(resolved)} |
+        Still Open: {len(open_issues)}
+    </h3>
+
+    <h3>Open Issues</h3>
+
+    <table border="1" cellpadding="6" cellspacing="0">
+        <tr>
+            <th>Issue</th>
+            <th>Summary</th>
+            <th>Priority</th>
+            <th>Status</th>
+        </tr>
+        {rows}
+    </table>
+    """
+
+    message = EmailMessage()
+    message["Subject"] = f"Jira Monday Brief - {PROJECT}"
+    message["From"] = SMTP_USER
+    message["To"] = RECIPIENT
+
+    message.set_content(
+        f"Created: {len(created)}, "
+        f"Resolved: {len(resolved)}, "
+        f"Still Open: {len(open_issues)}"
+    )
+
+    message.add_alternative(html, subtype="html")
+
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as smtp:
+            smtp.starttls()
+            smtp.login(SMTP_USER, SMTP_PASSWORD)
+            smtp.send_message(message)
+
+    except Exception as error:
+        die("EMAIL_FAILED", str(error))
+
+    print(f"[PASS] Email sent to {RECIPIENT}")
 
 
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--smoke-test",
-        action="store_true"
-    )
-
-    parser.add_argument(
-        "--start",
-        type=parse_date
-    )
-
-    parser.add_argument(
-        "--end",
-        type=parse_date
-    )
+    parser.add_argument("--smoke-test", action="store_true")
+    parser.add_argument("--send-email", action="store_true")
+    parser.add_argument("--start", type=parse_date)
+    parser.add_argument("--end", type=parse_date)
 
     args = parser.parse_args()
 
@@ -207,12 +277,26 @@ def main():
         smoke_test()
         return
 
-    start, end = reporting_period(
-        args.start,
-        args.end
+    start, end = reporting_period(args.start, args.end)
+
+    created, resolved, open_issues = get_report(start, end)
+
+    print_report(
+        start,
+        end,
+        created,
+        resolved,
+        open_issues,
     )
 
-    report(start, end)
+    if args.send_email:
+        send_email(
+            start,
+            end,
+            created,
+            resolved,
+            open_issues,
+        )
 
 
 if __name__ == "__main__":
