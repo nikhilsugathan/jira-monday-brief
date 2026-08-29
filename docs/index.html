@@ -301,13 +301,6 @@
       font-size: 14px;
     }
 
-    .manual-note {
-      margin-top: 14px;
-
-      color: var(--muted);
-      font-size: 13px;
-    }
-
     .primary {
       padding: 12px 20px;
 
@@ -325,6 +318,14 @@
 
     .primary:hover {
       background: var(--primary-hover);
+    }
+
+    .manual-note {
+      margin-top: 14px;
+
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
     }
 
     .links {
@@ -402,6 +403,7 @@
 
 <div class="container">
 
+  <!-- Header -->
   <header class="header">
 
     <div>
@@ -434,6 +436,7 @@
   </header>
 
 
+  <!-- Status cards -->
   <section class="cards">
 
     <div class="card">
@@ -504,6 +507,7 @@
   </section>
 
 
+  <!-- Report generation -->
   <section class="panel">
 
     <h2>
@@ -608,13 +612,16 @@
 
 
     <div class="manual-note">
-      Manual execution continues securely through the authenticated
-      GitHub Actions workflow. No credentials are stored in this page.
+      On-demand reports are generated through the authenticated
+      GitHub Actions workflow.
+      Weekly reports run automatically every Monday at
+      10:00 Europe/Berlin.
     </div>
 
   </section>
 
 
+  <!-- Operations -->
   <section class="panel">
 
     <h2>
@@ -674,6 +681,7 @@
   </section>
 
 
+  <!-- Documentation -->
   <section class="panel">
 
     <h2>
@@ -777,7 +785,9 @@
     );
   }
 
+
   function updateThemeButton() {
+
     const dark =
       document.body.classList.contains(
         "dark"
@@ -789,7 +799,9 @@
         : "Dark mode";
   }
 
+
   updateThemeButton();
+
 
   themeToggle.addEventListener(
     "click",
@@ -843,6 +855,7 @@
         }
       ).format(now);
 
+
     const date =
       new Intl.DateTimeFormat(
         "en-GB",
@@ -864,12 +877,14 @@
         }
       ).format(now);
 
+
     document
       .getElementById(
         "berlin-time"
       )
       .textContent =
         time;
+
 
     document
       .getElementById(
@@ -878,6 +893,7 @@
       .textContent =
         `${date} · Europe/Berlin`;
   }
+
 
   updateBerlinClock();
 
@@ -902,16 +918,20 @@
         }
       );
 
+
     const now =
       new Date(
         berlinNowString
       );
 
+
     const next =
       new Date(now);
 
+
     let daysUntilMonday =
       (8 - now.getDay()) % 7;
+
 
     if (
       now.getDay() === 1 &&
@@ -920,10 +940,12 @@
       daysUntilMonday = 0;
     }
 
+
     next.setDate(
       now.getDate() +
       daysUntilMonday
     );
+
 
     next.setHours(
       10,
@@ -932,14 +954,18 @@
       0
     );
 
+
     if (next <= now) {
+
       next.setDate(
         next.getDate() + 7
       );
     }
 
+
     const difference =
       next - now;
+
 
     const totalMinutes =
       Math.floor(
@@ -947,11 +973,13 @@
         (1000 * 60)
       );
 
+
     const days =
       Math.floor(
         totalMinutes /
         (60 * 24)
       );
+
 
     const hours =
       Math.floor(
@@ -961,8 +989,10 @@
         ) / 60
       );
 
+
     const minutes =
       totalMinutes % 60;
+
 
     document
       .getElementById(
@@ -971,6 +1001,7 @@
       .textContent =
         `Due in ${days}d ${hours}h ${minutes}m · Europe/Berlin`;
   }
+
 
   updateNextRun();
 
@@ -1001,6 +1032,7 @@
         "system-health"
       );
 
+
     try {
 
       const response =
@@ -1008,14 +1040,18 @@
           runsApi
         );
 
+
       if (!response.ok) {
+
         throw new Error(
           "GitHub API unavailable"
         );
       }
 
+
       const data =
         await response.json();
+
 
       if (
         !data.workflow_runs ||
@@ -1037,21 +1073,26 @@
         return;
       }
 
+
       const run =
         data.workflow_runs[0];
+
 
       const status =
         run.conclusion
           ? run.conclusion.toUpperCase()
           : run.status.toUpperCase();
 
+
       statusElement.textContent =
         status;
+
 
       statusElement.classList.remove(
         "status-success",
         "status-failure"
       );
+
 
       if (
         run.conclusion === "success"
@@ -1092,10 +1133,12 @@
           "health health-unknown";
       }
 
+
       const runDate =
         new Date(
           run.run_started_at
         );
+
 
       const formatted =
         new Intl.DateTimeFormat(
@@ -1123,14 +1166,18 @@
           runDate
         );
 
+
       timeElement.textContent =
         `Last executed ${formatted}`;
+
 
       statusElement.style.cursor =
         "pointer";
 
+
       statusElement.title =
         "Open latest workflow run";
+
 
       statusElement.onclick =
         () => {
@@ -1159,6 +1206,7 @@
     }
   }
 
+
   loadLatestRun();
 
 
@@ -1171,25 +1219,30 @@
       ".period"
     );
 
+
   const selectedPeriod =
     document.getElementById(
       "selected-period"
     );
+
 
   const customRange =
     document.getElementById(
       "custom-range"
     );
 
+
   const startDateInput =
     document.getElementById(
       "start-date"
     );
 
+
   const endDateInput =
     document.getElementById(
       "end-date"
     );
+
 
   let reportPeriod =
     "Previous week";
@@ -1204,21 +1257,26 @@
 
           periodButtons.forEach(
             item => {
+
               item.classList.remove(
                 "selected"
               );
             }
           );
 
+
           button.classList.add(
             "selected"
           );
 
+
           reportPeriod =
             button.dataset.period;
 
+
           selectedPeriod.textContent =
             reportPeriod;
+
 
           if (
             reportPeriod === "Custom"
@@ -1249,11 +1307,14 @@
       return;
     }
 
+
     const start =
       startDateInput.value;
 
+
     const end =
       endDateInput.value;
+
 
     if (
       start &&
@@ -1271,10 +1332,12 @@
     }
   }
 
+
   startDateInput.addEventListener(
     "change",
     updateCustomRangeText
   );
+
 
   endDateInput.addEventListener(
     "change",
@@ -1283,7 +1346,7 @@
 
 
   // -------------------------------------------------------
-  // Manual report execution
+  // Generate report
   // -------------------------------------------------------
 
   document
@@ -1294,9 +1357,6 @@
       "click",
       () => {
 
-        let selection =
-          reportPeriod;
-
         if (
           reportPeriod === "Custom"
         ) {
@@ -1304,8 +1364,10 @@
           const start =
             startDateInput.value;
 
+
           const end =
             endDateInput.value;
+
 
           if (
             !start ||
@@ -1319,6 +1381,7 @@
             return;
           }
 
+
           if (
             new Date(end) <
             new Date(start)
@@ -1330,19 +1393,7 @@
 
             return;
           }
-
-          selection =
-            `${start} to ${end}`;
         }
-
-
-        alert(
-          "Manual report execution uses GitHub Actions.\n\n" +
-          "Selected report: " +
-          selection +
-          "\n\n" +
-          "In GitHub, choose Run workflow and select the same reporting period."
-        );
 
 
         window.open(
