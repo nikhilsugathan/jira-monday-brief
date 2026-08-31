@@ -2,107 +2,216 @@
 
 A Python-based Jira Cloud reporting workflow for the Scalable Capital Cloud Application Administrator technical assignment.
 
-## What it does
+## Objective
 
-The workflow queries Jira Cloud through the Jira REST API and emails a report containing:
+The solution generates a Jira Cloud report for a selected project showing:
 
-- issues created in the selected reporting period;
-- issues resolved in the selected reporting period;
-- issues created in the selected reporting period that are still unresolved at generation time;
-- issue links, current status and priority for the still-open issues.
+- issues created during the selected reporting period;
+- issues resolved during the selected reporting period;
+- issues created during the selected reporting period that are still unresolved when the report runs;
+- direct Jira links, current status and priority for still-open issues.
 
-The scheduled production path targets every Monday at **10:00 Europe/Berlin** and always generates the **Previous Week** report. To reduce GitHub's documented top-of-hour delay risk, the hosted runner is requested at 09:37 and Python waits internally until 10:00 before querying Jira and generating the email.
+The scheduled report targets every Monday at **10:00 Europe/Berlin** and emails the result to the configured report recipient.
 
-The same GitHub Actions workflow also supports manual runs with:
+The solution uses the **Jira Cloud REST API v3** directly. **Jira Automation is not used.**
 
-- Current Report
-- Previous Week
-- Previous 2 Weeks
-- Previous 30 Days
-- Custom Range
-- All Statuses
-- To Do
-- In Progress
-- Done
+## Demo and source
+
+- Operations dashboard: https://nikhilsugathan.github.io/jira-monday-brief/
+- Source repository: https://github.com/nikhilsugathan/jira-monday-brief
+- GitHub Actions workflow: https://github.com/nikhilsugathan/jira-monday-brief/actions/workflows/jira-report.yml
+- Jira test project: `CAO` — Cloud Application Operations
 
 ## Architecture
 
 ```text
-Manual GitHub Actions run                  Weekly schedule
-(period/status inputs)                 Monday 10:00 Europe/Berlin
-             \                                  /
-              \                                /
-               +------ GitHub Actions --------+
-                           |
-                           v
-                       report.py
-                           |
-                           v
-                    Jira Cloud REST API
-                           |
-                +----------+-----------+
-                |          |           |
-             Created    Resolved   Still Open
-                +----------+-----------+
-                           |
-                           v
-                     HTML email report
-                           |
-                           v
-                       Project lead
+GitHub Pages dashboard
+        |
+        v
+GitHub Actions
+        |
+        +-----------------------------+
+        |                             |
+Manual report                  Monday schedule
+                               09:37 runner request
+                               10:00 report start
+        |                             |
+        +--------------+--------------+
+                       |
+                       v
+               GitHub-hosted runner
+                       |
+                       v
+                   report.py
+                       |
+                       v
+            Jira Cloud REST API v3
+                       |
+            +----------+----------+
+            |          |          |
+         Created    Resolved   Still Open
+            +----------+----------+
+                       |
+                       v
+               HTML email report
+                       |
+                       v
+               Report recipient
 ```
 
-There is no continuously running application server, VM, database or container. GitHub provides an ephemeral hosted runner only when the workflow executes.
+There is no permanent VM, database, container or application server. GitHub provides an ephemeral hosted runner only while the workflow is active.
 
-## Files
+## Main files
 
-- `report.py` — Jira REST API integration, report-period logic, status validation, pagination, metrics, email generation and error handling.
-- `.github/workflows/jira-report.yml` — manual input form and Monday schedule.
-- `requirements.txt` — Python dependency list.
-- `.env.example` — local configuration template without secrets.
+- `report.py` — Jira access validation, reporting-period logic, status selection, JQL queries, pagination, report calculations, HTML email generation, SMTP delivery and retry/error handling.
+- `.github/workflows/jira-report.yml` — manual workflow inputs, Monday schedule, Python runtime and secret injection.
+- `requirements.txt` — Python dependencies.
+- `.env.example` — configuration template containing placeholder values only.
+- `docs/index.html` — GitHub Pages operations dashboard.
 
-## Jira API usage
+## Tools and external services
 
-The implementation uses Jira Cloud REST API v3.
+### Jira Cloud
 
-It validates:
+Jira Cloud is the report data source. The implementation uses Jira REST API v3.
 
-1. Jira authentication using `/rest/api/3/myself`.
-2. Project access using `/rest/api/3/project/{projectKey}`.
-3. Project workflow statuses using `/rest/api/3/project/{projectKey}/statuses`.
-4. Report data using `/rest/api/3/search/jql`.
+Endpoints used:
 
-The search helper follows Jira's `nextPageToken` until all pages are retrieved.
+```text
+GET  /rest/api/3/myself
+GET  /rest/api/3/project/{projectKey}
+GET  /rest/api/3/project/{projectKey}/statuses
+POST /rest/api/3/search/jql
+```
 
-## Report definitions
+### GitHub Actions
 
-All date calculations use `Europe/Berlin`.
+GitHub Actions provides:
 
-**Previous Week**
+- scheduled Monday execution;
+- manual `workflow_dispatch` execution;
+- ephemeral `ubuntu-latest` compute;
+- Python 3.12 runtime;
+- runtime secret injection;
+- workflow logs and execution history;
+- generated job summaries.
 
-Previous Monday 00:00 through the current Monday 00:00, using an exclusive end boundary.
+### GitHub Pages
 
-**Created**
+`docs/index.html` provides a static operations dashboard showing Berlin time, the next scheduled report and the latest workflow result. The dashboard contains no privileged credentials.
 
-Issues whose `created` timestamp falls inside the reporting period.
+### SMTP
 
-**Resolved**
+SMTP is used to deliver the final HTML report to the configured recipient using STARTTLS.
 
-Issues whose `resolutiondate` falls inside the reporting period. They may have been created before the reporting period.
+## Reporting rules and assumptions
 
-**Still Open**
+All report date calculations use `Europe/Berlin`.
 
-Issues created inside the reporting period whose Jira `resolution` is still empty when the report is generated.
+**Past week** is interpreted as the previous completed Monday-Sunday calendar week:
 
-**Status filter**
+```text
+Previous Monday 00:00 inclusive
+to
+Current Monday 00:00 exclusive
+```
 
-A manual run can limit results by current Jira status. The Python program validates requested status names against the project's statuses before running the JQL searches. The scheduled Monday report uses all statuses.
+The exclusive end boundary avoids double-counting issues exactly at a date boundary.
 
-## Security and permissions
+**Created** means the Jira `created` timestamp falls inside the selected reporting period.
 
-Secrets are stored as GitHub Actions repository secrets and are injected only into the job environment at runtime.
+**Resolved** means the Jira `resolutiondate` falls inside the selected reporting period. The issue may have been created earlier.
 
-Required repository secrets:
+**Still Open** means the issue was created during the selected reporting period and `resolution IS EMPTY` when the report is generated.
+
+Additional assumptions:
+
+- the configured `REPORT_RECIPIENT` represents the project lead/report recipient;
+- the Jira API identity can see all issues that are expected to be counted;
+- issue-level Jira security can reduce counts if the reporting identity cannot see an issue;
+- the Monday schedule is operational rather than hard real-time because GitHub-hosted runner allocation can be delayed;
+- scheduled Monday reports use **Previous Week** and **All Statuses**.
+
+## Manual report options
+
+Manual workflow runs support:
+
+```text
+Current Report
+Previous Week
+Previous 2 Weeks
+Previous 30 Days
+Custom Range
+```
+
+Status selections:
+
+```text
+All Statuses
+To Do
+In Progress
+Done
+```
+
+For a custom range, enter both dates in `YYYY-MM-DD`.
+
+Requested status names are checked against the statuses returned by Jira before the report queries run.
+
+## Scheduling
+
+The workflow requests a GitHub-hosted runner at 09:37 every Monday:
+
+```yaml
+schedule:
+  - cron: "37 9 * * 1"
+    timezone: "Europe/Berlin"
+```
+
+If the runner is available before 10:00, `report.py` waits until **10:00:00 Europe/Berlin** before querying Jira and generating the report.
+
+If the runner is allocated after 10:00, the report starts immediately and logs the delay.
+
+## Reproduction steps
+
+### 1. Clone the repository
+
+```powershell
+git clone https://github.com/nikhilsugathan/jira-monday-brief.git
+cd jira-monday-brief
+```
+
+### 2. Create a local Python environment
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+Optional syntax check:
+
+```powershell
+python -m py_compile report.py
+```
+
+### 3. Create Jira access
+
+Create or select a Jira Cloud project and create an Atlassian API token for an account that can browse the project.
+
+The Jira account needs read access only:
+
+- Browse Projects;
+- visibility of the issues being reported;
+- permission to search issues;
+- permission to read project statuses.
+
+### 4. Configure GitHub Actions Secrets
+
+Open:
+
+**Repository → Settings → Secrets and variables → Actions**
+
+Create:
 
 ```text
 JIRA_URL
@@ -116,95 +225,108 @@ SMTP_USERNAME
 SMTP_PASSWORD
 ```
 
-The Jira account only requires read access appropriate for the report, including Browse Projects and visibility of the issues to be reported.
+### 5. Run a manual report
 
-No Jira token or SMTP password is stored in source control, `.env.example`, workflow logs or report output.
+Open:
 
-The workflow token is explicitly restricted to:
+**GitHub → Actions → Jira Monday Brief → Run workflow**
+
+For a standard verification run:
+
+```text
+Reporting period: Previous Week
+All Statuses: enabled
+```
+
+Run the workflow, open the generated job and confirm **Generate Jira Monday Brief** succeeds.
+
+Then confirm the report email reaches `REPORT_RECIPIENT`.
+
+## Compute, permissions and network
+
+### Compute
+
+The report uses a GitHub-hosted `ubuntu-latest` runner with Python 3.12. The runner exists only for the workflow execution.
+
+No persistent compute resource is required.
+
+### GitHub permissions
+
+The workflow token is restricted to:
 
 ```yaml
 permissions:
   contents: read
 ```
 
-## Network connections
+### Network connections
 
-The GitHub-hosted runner makes outbound connections only to:
+The GitHub-hosted runner makes outbound connections to:
 
-- the configured Jira Cloud site over HTTPS;
-- the configured SMTP service for report delivery;
-- GitHub/Python package infrastructure required to start the workflow and install `requests`.
+- Jira Cloud over HTTPS / TCP 443;
+- the SMTP provider over STARTTLS / TCP 587;
+- GitHub and Python package infrastructure over HTTPS / TCP 443.
 
-No inbound network connection to a custom server is required.
+No custom inbound network connection is required.
+
+## Security
+
+Real credentials are not stored in the repository.
+
+`.gitignore` excludes `.env`, and `.env.example` contains placeholders only.
+
+Do not commit or publish:
+
+```text
+.env
+JIRA_API_TOKEN
+SMTP_PASSWORD
+Gmail App Password
+GitHub write token
+```
+
+The public GitHub Pages dashboard does not call the authenticated workflow-dispatch API directly. Manual execution stays inside GitHub's authenticated Actions interface so that no write-capable token is exposed in browser JavaScript.
 
 ## Error handling
 
-`report.py` returns clear diagnostic errors for:
+`report.py` handles configuration errors, Jira authentication and authorization failures, inaccessible projects, invalid reporting periods and statuses, Jira rate limiting, temporary Jira failures, connection errors, timeouts and SMTP delivery failures.
 
-- missing configuration;
-- invalid Jira URL;
-- failed authentication;
-- inaccessible/nonexistent project;
-- unavailable project statuses;
-- invalid custom date ranges;
-- invalid selected statuses;
-- malformed JQL;
-- authorization failures;
-- rate limiting;
-- temporary Jira 5xx failures;
-- connection/timeouts;
-- email-delivery failures.
-
-Temporary Jira `429` and common `5xx` responses are retried up to three attempts with a short backoff.
-
-## Reproduce
-
-1. Create a Jira Cloud project and note the project key.
-2. Create an Atlassian API token for the account that can browse the project.
-3. Create a GitHub repository and add these files.
-4. In **Settings → Secrets and variables → Actions**, create the nine repository secrets listed above.
-5. For Gmail SMTP, use a Gmail App Password rather than the normal account password.
-6. Open **Actions → Jira Monday Brief → Run workflow**.
-7. Leave **All Statuses** selected for the normal report, or uncheck it and choose one or more specific status checkboxes.
-8. Select the reporting period. For `custom`, enter start and end dates in `YYYY-MM-DD`.
-9. Run the workflow.
-10. Verify the workflow summary and the email received by the report recipient.
-
-The runner pre-start schedule is:
-
-```yaml
-cron: "37 9 * * 1"
-timezone: "Europe/Berlin"
-```
-
-`report.py` detects the scheduled run and waits until **10:00 Europe/Berlin** before starting Jira report generation. If GitHub does not allocate the runner until after 10:00, it runs immediately and logs the measured lateness.
-
-## Scheduling note
-
-GitHub documents that scheduled workflows can be delayed, especially at the start of an hour. This project therefore requests the hosted runner at 09:37 Europe/Berlin and uses a Python scheduling gate to wait until 10:00:00 before report generation. This materially reduces the top-of-hour delay risk while keeping the solution serverless. It is still not a hard real-time guarantee: if GitHub does not provide a runner by 10:00, the report starts as soon as the runner becomes available and the delay is logged.
-
-## Testing evidence
-
-During development the Jira connection was validated independently before the final workflow was assembled.
-
-Tests included:
-
-- successful Jira authentication;
-- malformed Jira URL;
-- intentionally invalid API credentials returning HTTP 401;
-- nonexistent/inaccessible project key;
-- successful project validation;
-- successful JQL retrieval;
-- end-to-end report email delivery.
-
-Add the final screenshots below before submission:
+Retryable Jira responses are:
 
 ```text
-docs/email-report.png
-docs/manual-workflow-run.png
-docs/scheduled-workflow.png
+429
+500
+502
+503
+504
 ```
 
-## AI-assisted development disclosure
+They are retried up to three attempts. `Retry-After` is respected where supplied; otherwise the script uses a short backoff.
 
-AI tools were used as a supporting resource for brainstorming edge cases, reviewing failure scenarios and improving documentation clarity. The implementation, credentials, Jira configuration and execution were manually validated. No API tokens or passwords are included in this repository, and AI is not part of the runtime workflow.
+## Final validation
+
+The final end-to-end manual validation used:
+
+```text
+Project: Cloud Application Operations (CAO)
+Reporting period: 2026-08-02 to 2026-08-31
+Status filter: All Statuses
+Created: 6
+Resolved: 2
+Still Open: 4
+Workflow: SUCCESS
+Email delivery: SUCCESS
+```
+
+The Operations, Validation & Handover Runbook contains the final evidence screenshots:
+
+1. Operations dashboard showing the healthy state and successful workflow.
+2. Successful GitHub Actions execution and generated report summary.
+3. Received Jira Monday Brief HTML email.
+
+## Documentation
+
+- Service Overview & Documentation Index: https://nikhilsugathan.atlassian.net/wiki/spaces/OPERATIONS/pages/753667
+- Architecture, Data Flow & Technical Design: https://nikhilsugathan.atlassian.net/wiki/spaces/OPERATIONS/pages/720931
+- Operations, Validation & Handover Runbook: https://nikhilsugathan.atlassian.net/wiki/spaces/OPERATIONS/pages/753694
+- Troubleshooting & Error Handling: https://nikhilsugathan.atlassian.net/wiki/spaces/OPERATIONS/pages/688144
