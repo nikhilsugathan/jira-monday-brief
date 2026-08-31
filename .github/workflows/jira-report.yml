@@ -1,0 +1,106 @@
+name: Jira Monday Brief
+
+on:
+  workflow_dispatch:
+    inputs:
+      period:
+        description: "Reporting period"
+        required: true
+        default: "previous_week"
+        type: choice
+        options:
+          - current
+          - previous_week
+          - previous_2_weeks
+          - previous_30_days
+          - custom
+
+      all_statuses:
+        description: "All Statuses"
+        required: true
+        default: true
+        type: boolean
+
+      status_to_do:
+        description: "Include To Do"
+        required: true
+        default: false
+        type: boolean
+
+      status_in_progress:
+        description: "Include In Progress"
+        required: true
+        default: false
+        type: boolean
+
+      status_done:
+        description: "Include Done"
+        required: true
+        default: false
+        type: boolean
+
+      custom_start:
+        description: "Custom start date (YYYY-MM-DD; only used for custom)"
+        required: false
+        type: string
+
+      custom_end:
+        description: "Custom end date (YYYY-MM-DD; only used for custom)"
+        required: false
+        type: string
+
+  # Ask GitHub for a runner at 09:37, before 10:00 and away from the top-of-hour load peak.
+  # Python then waits until 10:00 Europe/Berlin before generating the report.
+  schedule:
+    - cron: "37 9 * * 1"
+      timezone: "Europe/Berlin"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jira-monday-brief
+  cancel-in-progress: false
+
+jobs:
+  generate-report:
+    name: Generate and email Jira report
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate Jira Monday Brief
+        env:
+          JIRA_URL: ${{ secrets.JIRA_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_PROJECT_KEY: ${{ secrets.JIRA_PROJECT_KEY }}
+
+          REPORT_RECIPIENT: ${{ secrets.REPORT_RECIPIENT }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+
+          SCHEDULED_RUN: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
+          REPORT_PERIOD: ${{ github.event_name == 'schedule' && 'previous_week' || inputs.period }}
+          ALL_STATUSES: ${{ github.event_name == 'schedule' && 'true' || inputs.all_statuses }}
+          STATUS_TO_DO: ${{ github.event_name == 'schedule' && 'false' || inputs.status_to_do }}
+          STATUS_IN_PROGRESS: ${{ github.event_name == 'schedule' && 'false' || inputs.status_in_progress }}
+          STATUS_DONE: ${{ github.event_name == 'schedule' && 'false' || inputs.status_done }}
+          CUSTOM_START: ${{ github.event_name == 'workflow_dispatch' && inputs.custom_start || '' }}
+          CUSTOM_END: ${{ github.event_name == 'workflow_dispatch' && inputs.custom_end || '' }}
+
+        run: python report.py
