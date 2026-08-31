@@ -3,786 +3,133 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Jira Monday Brief | Operations Console</title>
+
+  <title>Jira Monday Brief | Generate Report</title>
 
   <style>
-    * { box-sizing: border-box; }
-
-    :root {
-      --page-bg:#f4f5f7;
-      --panel-bg:#fff;
-      --text:#172b4d;
-      --muted:#6b778c;
-      --border:#dfe1e6;
-      --soft-bg:#f4f5f7;
-      --primary:#0052cc;
-      --primary-hover:#0747a6;
-      --selected-bg:#deebff;
-      --selected-text:#0747a6;
-      --success-bg:#e3fcef;
-      --success-text:#006644;
-      --warning-bg:#fff0b3;
-      --warning-text:#974f0c;
-      --danger-bg:#ffebe6;
-      --danger-text:#bf2600;
-      --link:#0052cc;
-    }
-
-    body.dark {
-      --page-bg:#0d1117;
-      --panel-bg:#161b22;
-      --text:#e6edf3;
-      --muted:#8b949e;
-      --border:#30363d;
-      --soft-bg:#21262d;
-      --primary:#238636;
-      --primary-hover:#2ea043;
-      --selected-bg:#24446b;
-      --selected-text:#d6ebff;
-      --success-bg:#0f5132;
-      --success-text:#7ee2a8;
-      --warning-bg:#4d3800;
-      --warning-text:#e3b341;
-      --danger-bg:#4c1d1d;
-      --danger-text:#ff7b72;
-      --link:#58a6ff;
+    * {
+      box-sizing: border-box;
     }
 
     body {
-      margin:0;
-      font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-      background:var(--page-bg);
-      color:var(--text);
-      transition:.2s;
+      margin: 0;
+      min-height: 100vh;
+
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      font-family:
+        Inter,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+
+      background: #f4f5f7;
+      color: #172b4d;
     }
 
     .container {
-      width:min(1180px,calc(100% - 32px));
-      margin:32px auto;
+      width: min(560px, calc(100% - 32px));
+      text-align: center;
     }
 
-    .header {
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:20px;
-      margin-bottom:28px;
+    .panel {
+      background: #ffffff;
+      border: 1px solid #dfe1e6;
+      border-radius: 12px;
+
+      padding: 42px 32px;
+
+      box-shadow:
+        0 4px 12px rgba(9, 30, 66, 0.08);
     }
 
-    .header h1 { margin:0; font-size:30px; }
-    .subtitle { margin-top:7px; color:var(--muted); font-size:16px; }
+    h1 {
+      margin: 0 0 12px;
 
-    .header-actions {
-      display:flex;
-      align-items:center;
-      gap:12px;
+      font-size: 30px;
+      font-weight: 700;
     }
 
-    .theme-toggle {
-      padding:8px 15px;
-      border:1px solid var(--border);
-      border-radius:20px;
-      background:var(--panel-bg);
-      color:var(--text);
-      cursor:pointer;
-      font-weight:600;
+    .description {
+      margin: 0 0 28px;
+
+      color: #6b778c;
+      font-size: 15px;
+      line-height: 1.6;
     }
 
-    .health {
-      padding:8px 15px;
-      border-radius:20px;
-      font-size:13px;
-      font-weight:700;
+    .generate-button {
+      display: inline-block;
+
+      padding: 14px 24px;
+
+      border-radius: 7px;
+
+      background: #0052cc;
+      color: #ffffff;
+
+      text-decoration: none;
+
+      font-size: 16px;
+      font-weight: 700;
+
+      transition:
+        background 0.2s ease,
+        transform 0.1s ease;
     }
 
-    .health-success { background:var(--success-bg); color:var(--success-text); }
-    .health-failure { background:var(--danger-bg); color:var(--danger-text); }
-    .health-unknown { background:var(--warning-bg); color:var(--warning-text); }
-
-    .cards {
-      display:grid;
-      grid-template-columns:repeat(3,1fr);
-      gap:18px;
-      margin-bottom:24px;
+    .generate-button:hover {
+      background: #0747a6;
     }
 
-    .card,.panel {
-      background:var(--panel-bg);
-      border:1px solid var(--border);
-      border-radius:10px;
-      padding:22px;
+    .generate-button:active {
+      transform: translateY(1px);
     }
 
-    .label {
-      color:var(--muted);
-      font-size:13px;
-      font-weight:700;
-      text-transform:uppercase;
-      letter-spacing:.05em;
-    }
+    .note {
+      margin-top: 22px;
 
-    .value { margin-top:10px; font-size:24px; font-weight:700; }
-    .detail { margin-top:6px; color:var(--muted); font-size:14px; }
-    .status-success { color:var(--success-text); }
-    .status-failure { color:var(--danger-text); }
-
-    .panel { margin-bottom:24px; }
-    .panel h2 { margin:0 0 6px; font-size:20px; }
-    .panel-description { margin:0 0 20px; color:var(--muted); }
-
-    .period-options {
-      display:grid;
-      grid-template-columns:repeat(4,1fr);
-      gap:12px;
-      margin-bottom:20px;
-    }
-
-    .period {
-      padding:16px;
-      border:2px solid var(--border);
-      border-radius:8px;
-      background:var(--panel-bg);
-      color:var(--text);
-      cursor:pointer;
-      text-align:left;
-      font-size:15px;
-      font-weight:600;
-    }
-
-    .period:hover { border-color:var(--link); }
-
-    .period.selected {
-      border-color:var(--link);
-      background:var(--selected-bg);
-      color:var(--selected-text);
-    }
-
-    .custom-range {
-      display:none;
-      grid-template-columns:1fr 1fr;
-      gap:16px;
-      margin-bottom:20px;
-    }
-
-    .custom-range.visible { display:grid; }
-
-    label {
-      display:block;
-      margin-bottom:6px;
-      font-size:14px;
-      font-weight:600;
-    }
-
-    input[type="date"] {
-      width:100%;
-      padding:11px;
-      border:1px solid var(--border);
-      border-radius:6px;
-      background:var(--panel-bg);
-      color:var(--text);
-      font-size:15px;
-    }
-
-    .selection {
-      margin-bottom:18px;
-      padding:12px 14px;
-      border-radius:6px;
-      background:var(--soft-bg);
-      font-size:14px;
-    }
-
-    .primary {
-      padding:12px 20px;
-      border:0;
-      border-radius:6px;
-      background:var(--primary);
-      color:#fff;
-      cursor:pointer;
-      font-size:15px;
-      font-weight:700;
-    }
-
-    .primary:hover { background:var(--primary-hover); }
-
-    .manual-note {
-      margin-top:14px;
-      color:var(--muted);
-      font-size:13px;
-      line-height:1.5;
-    }
-
-    .links {
-      display:grid;
-      grid-template-columns:repeat(3,1fr);
-      gap:12px;
-    }
-
-    .link-card {
-      display:block;
-      padding:16px;
-      border:1px solid var(--border);
-      border-radius:7px;
-      background:var(--panel-bg);
-      color:var(--link);
-      text-decoration:none;
-      font-weight:600;
-    }
-
-    .link-card:hover { background:var(--soft-bg); }
-
-    .link-card span {
-      display:block;
-      margin-top:5px;
-      color:var(--muted);
-      font-size:12px;
-      font-weight:normal;
-    }
-
-    .footer {
-      padding:10px 0 30px;
-      color:var(--muted);
-      text-align:center;
-      font-size:13px;
-    }
-
-    @media (max-width:800px) {
-      .cards,.period-options,.links { grid-template-columns:1fr; }
-      .custom-range { grid-template-columns:1fr; }
-      .header { align-items:flex-start; flex-direction:column; }
-      .header-actions { width:100%; justify-content:space-between; }
+      color: #6b778c;
+      font-size: 13px;
+      line-height: 1.5;
     }
   </style>
 </head>
 
 <body>
-<div class="container">
 
-  <header class="header">
-    <div>
+  <main class="container">
+
+    <section class="panel">
+
       <h1>Jira Monday Brief</h1>
-      <div class="subtitle">Cloud Application Operations — Reporting Console</div>
-    </div>
 
-    <div class="header-actions">
-      <button id="theme-toggle" class="theme-toggle" type="button">Dark mode</button>
-      <div id="system-health" class="health health-unknown">CHECKING STATUS</div>
-    </div>
-  </header>
+      <p class="description">
+        Generate an on-demand Jira Cloud report using the
+        authenticated GitHub Actions workflow.
+      </p>
 
-  <section class="cards">
-    <div class="card">
-      <div class="label">Berlin Time</div>
-      <div class="value" id="berlin-time">--:--:--</div>
-      <div class="detail" id="berlin-date">Europe/Berlin</div>
-    </div>
+      <a
+        class="generate-button"
+        href="https://github.com/nikhilsugathan/jira-monday-brief/actions/workflows/jira-report.yml"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Generate Report
+      </a>
 
-    <div class="card">
-      <div class="label">Next Scheduled Report</div>
-      <div class="value">Monday 10:00</div>
-      <div class="detail" id="next-run">Calculating...</div>
-    </div>
-
-    <div class="card">
-      <div class="label">Last Workflow Run</div>
-      <div class="value" id="last-run-status">Loading...</div>
-      <div class="detail" id="last-run-time">GitHub Actions</div>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Generate Report</h2>
-
-    <p class="panel-description">
-      Select the reporting period for an on-demand Jira report.
-    </p>
-
-    <div class="period-options">
-      <button class="period selected" type="button" data-period="Previous week">
-        Previous Week
-      </button>
-
-      <button class="period" type="button" data-period="Previous 2 weeks">
-        Previous 2 Weeks
-      </button>
-
-      <button class="period" type="button" data-period="Previous 30 days">
-        Previous 30 Days
-      </button>
-
-      <button class="period" type="button" data-period="Custom">
-        Custom Range
-      </button>
-    </div>
-
-    <div id="custom-range" class="custom-range">
-      <div>
-        <label for="start-date">Start date</label>
-        <input type="date" id="start-date">
+      <div class="note">
+        In GitHub Actions, choose the reporting period and optional
+        status filters, then click <strong>Run workflow</strong>.
       </div>
 
-      <div>
-        <label for="end-date">End date</label>
-        <input type="date" id="end-date">
-      </div>
-    </div>
+    </section>
 
-    <div class="selection">
-      Selected report:
-      <strong id="selected-period">Previous week</strong>
-    </div>
-
-    <button class="primary" id="generate-report" type="button">
-      Generate Report
-    </button>
-
-    <div class="manual-note">
-      On-demand reports are generated through the authenticated GitHub Actions workflow.
-      Weekly reports run automatically every Monday at 10:00 Europe/Berlin.
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Report Operations</h2>
-
-    <p class="panel-description">
-      Access workflow history, Jira Cloud and the source repository.
-    </p>
-
-    <div class="links">
-      <a
-        class="link-card"
-        href="https://github.com/nikhilsugathan/jira-monday-brief/actions"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        Workflow History
-        <span>View scheduled and manual report executions.</span>
-      </a>
-
-      <a
-        class="link-card"
-        href="https://nikhilsugathan.atlassian.net"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        Jira Cloud
-        <span>Open the Cloud Application Operations project.</span>
-      </a>
-
-      <a
-        class="link-card"
-        href="https://github.com/nikhilsugathan/jira-monday-brief"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        Source Repository
-        <span>Review Python code, workflow and documentation.</span>
-      </a>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Help & Documentation</h2>
-
-    <p class="panel-description">
-      Public setup instructions, operational procedures and troubleshooting.
-    </p>
-
-    <div class="links">
-      <a
-        class="link-card"
-        href="https://github.com/nikhilsugathan/jira-monday-brief#3-architecture"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        How It Works
-        <span>Architecture and reporting flow.</span>
-      </a>
-
-      <a
-        class="link-card"
-        href="https://github.com/nikhilsugathan/jira-monday-brief#19-operational-runbook"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        Operations Runbook
-        <span>Manual execution, handover and normal operation.</span>
-      </a>
-
-      <a
-        class="link-card"
-        href="https://github.com/nikhilsugathan/jira-monday-brief#15-error-handling"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        Failure KB
-        <span>Error handling and troubleshooting guidance.</span>
-      </a>
-    </div>
-  </section>
-
-  <div class="footer">
-    Jira Monday Brief · Jira REST API · GitHub Actions
-  </div>
-
-</div>
-
-<script>
-  const workflowUrl =
-  "https://github.com/nikhilsugathan/jira-monday-brief/actions/workflows/jira-report.yml";
-
-  const runsApi =
-  "https://api.github.com/repos/nikhilsugathan/jira-monday-brief/actions/workflows/jira-report.yml/runs?per_page=1";
-
-
-  // Theme
-  const themeToggle = document.getElementById("theme-toggle");
-  const savedTheme = localStorage.getItem("jira-report-theme");
-
-  const systemPrefersDark =
-    window.matchMedia &&
-    window.matchMedia("(prefers-color-scheme: dark)").matches;
-
-  if (savedTheme === "dark" || (!savedTheme && systemPrefersDark)) {
-    document.body.classList.add("dark");
-  }
-
-  function updateThemeButton() {
-    const dark = document.body.classList.contains("dark");
-    themeToggle.textContent = dark ? "Light mode" : "Dark mode";
-  }
-
-  updateThemeButton();
-
-  themeToggle.addEventListener("click", () => {
-    document.body.classList.toggle("dark");
-
-    const dark = document.body.classList.contains("dark");
-
-    localStorage.setItem(
-      "jira-report-theme",
-      dark ? "dark" : "light"
-    );
-
-    updateThemeButton();
-  });
-
-
-  // Berlin clock
-  function updateBerlinClock() {
-    const now = new Date();
-
-    const time = new Intl.DateTimeFormat(
-      "en-GB",
-      {
-        timeZone: "Europe/Berlin",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit"
-      }
-    ).format(now);
-
-    const date = new Intl.DateTimeFormat(
-      "en-GB",
-      {
-        timeZone: "Europe/Berlin",
-        weekday: "short",
-        day: "2-digit",
-        month: "short",
-        year: "numeric"
-      }
-    ).format(now);
-
-    document.getElementById("berlin-time").textContent = time;
-    document.getElementById("berlin-date").textContent =
-      `${date} · Europe/Berlin`;
-  }
-
-  updateBerlinClock();
-  setInterval(updateBerlinClock, 1000);
-
-
-  // Next scheduled run
-  function updateNextRun() {
-    const berlinNowString =
-      new Date().toLocaleString(
-        "en-US",
-        { timeZone: "Europe/Berlin" }
-      );
-
-    const now = new Date(berlinNowString);
-    const next = new Date(now);
-
-    let daysUntilMonday =
-      (8 - now.getDay()) % 7;
-
-    if (
-      now.getDay() === 1 &&
-      now.getHours() < 10
-    ) {
-      daysUntilMonday = 0;
-    }
-
-    next.setDate(
-      now.getDate() + daysUntilMonday
-    );
-
-    next.setHours(10, 0, 0, 0);
-
-    if (next <= now) {
-      next.setDate(next.getDate() + 7);
-    }
-
-    const totalMinutes =
-      Math.floor(
-        (next - now) /
-        (1000 * 60)
-      );
-
-    const days =
-      Math.floor(
-        totalMinutes /
-        (60 * 24)
-      );
-
-    const hours =
-      Math.floor(
-        (totalMinutes % (60 * 24)) /
-        60
-      );
-
-    const minutes =
-      totalMinutes % 60;
-
-    document.getElementById("next-run").textContent =
-      `Due in ${days}d ${hours}h ${minutes}m · Europe/Berlin`;
-  }
-
-  updateNextRun();
-  setInterval(updateNextRun, 60000);
-
-
-  // Latest GitHub Actions run
-  async function loadLatestRun() {
-    const statusElement =
-      document.getElementById("last-run-status");
-
-    const timeElement =
-      document.getElementById("last-run-time");
-
-    const healthElement =
-      document.getElementById("system-health");
-
-    try {
-      const response =
-        await fetch(runsApi);
-
-      if (!response.ok) {
-        throw new Error("GitHub API unavailable");
-      }
-
-      const data =
-        await response.json();
-
-      if (
-        !data.workflow_runs ||
-        data.workflow_runs.length === 0
-      ) {
-        statusElement.textContent = "NO RUNS";
-        timeElement.textContent = "No workflow history found";
-
-        healthElement.textContent = "STATUS UNKNOWN";
-        healthElement.className = "health health-unknown";
-        return;
-      }
-
-      const run =
-        data.workflow_runs[0];
-
-      const status =
-        run.conclusion
-          ? run.conclusion.toUpperCase()
-          : run.status.toUpperCase();
-
-      statusElement.textContent = status;
-
-      statusElement.classList.remove(
-        "status-success",
-        "status-failure"
-      );
-
-      if (run.conclusion === "success") {
-        statusElement.classList.add("status-success");
-
-        healthElement.textContent = "AUTOMATION HEALTHY";
-        healthElement.className = "health health-success";
-      }
-
-      else if (run.conclusion === "failure") {
-        statusElement.classList.add("status-failure");
-
-        healthElement.textContent = "ATTENTION REQUIRED";
-        healthElement.className = "health health-failure";
-      }
-
-      else {
-        healthElement.textContent = "WORKFLOW ACTIVE";
-        healthElement.className = "health health-unknown";
-      }
-
-      const runDate =
-        new Date(run.run_started_at);
-
-      const formatted =
-        new Intl.DateTimeFormat(
-          "en-GB",
-          {
-            timeZone: "Europe/Berlin",
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit"
-          }
-        ).format(runDate);
-
-      timeElement.textContent =
-        `Last executed ${formatted}`;
-
-      statusElement.style.cursor = "pointer";
-      statusElement.title = "Open latest workflow run";
-
-      statusElement.onclick = () => {
-        window.open(
-          run.html_url,
-          "_blank",
-          "noopener,noreferrer"
-        );
-      };
-    }
-
-    catch {
-      statusElement.textContent = "UNAVAILABLE";
-      timeElement.textContent =
-        "Unable to retrieve workflow status";
-
-      healthElement.textContent =
-        "STATUS UNKNOWN";
-
-      healthElement.className =
-        "health health-unknown";
-    }
-  }
-
-  loadLatestRun();
-
-
-  // Reporting period
-  const periodButtons =
-    document.querySelectorAll(".period");
-
-  const selectedPeriod =
-    document.getElementById("selected-period");
-
-  const customRange =
-    document.getElementById("custom-range");
-
-  const startDateInput =
-    document.getElementById("start-date");
-
-  const endDateInput =
-    document.getElementById("end-date");
-
-  let reportPeriod =
-    "Previous week";
-
-  periodButtons.forEach(button => {
-    button.addEventListener("click", () => {
-      periodButtons.forEach(item =>
-        item.classList.remove("selected")
-      );
-
-      button.classList.add("selected");
-
-      reportPeriod =
-        button.dataset.period;
-
-      selectedPeriod.textContent =
-        reportPeriod;
-
-      customRange.classList.toggle(
-        "visible",
-        reportPeriod === "Custom"
-      );
-    });
-  });
-
-
-  function updateCustomRangeText() {
-    if (reportPeriod !== "Custom") {
-      return;
-    }
-
-    const start =
-      startDateInput.value;
-
-    const end =
-      endDateInput.value;
-
-    selectedPeriod.textContent =
-      start && end
-        ? `${start} to ${end}`
-        : "Custom range";
-  }
-
-  startDateInput.addEventListener(
-    "change",
-    updateCustomRangeText
-  );
-
-  endDateInput.addEventListener(
-    "change",
-    updateCustomRangeText
-  );
-
-
-  // Generate report
-  document
-    .getElementById("generate-report")
-    .addEventListener("click", () => {
-
-      if (reportPeriod === "Custom") {
-        const start =
-          startDateInput.value;
-
-        const end =
-          endDateInput.value;
-
-        if (!start || !end) {
-          alert(
-            "Please select both a start and end date."
-          );
-          return;
-        }
-
-        if (
-          new Date(end) <
-          new Date(start)
-        ) {
-          alert(
-            "End date cannot be before start date."
-          );
-          return;
-        }
-      }
-
-      window.open(
-        workflowUrl,
-        "_blank",
-        "noopener,noreferrer"
-      );
-    });
-</script>
+  </main>
 
 </body>
 </html>
